@@ -1,0 +1,45 @@
+﻿version: '3.0'
+
+services:
+
+  dotnet-app:
+    build: .
+    image: dotnet-app:latest
+    container_name: dotnet-app
+    hostname: dotnet-app
+    depends_on:
+      - collector
+    ports:
+      - "8090:80"
+    volumes:
+      - ~/.aws:/root/.aws
+    environment:
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:5555
+      - OTEL_TRACES_SAMPLER=always_on
+      - OTEL_IMR_EXPORT_INTERVAL=5000
+      - OTEL_METRIC_EXPORT_INTERVAL=5000
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=dotnet-app,service.version=1.0,deployment.environment=production,aws.log.group.arns=arn:aws:logs:us-east-2:174073775633:log-group:/metrics/otel:*
+    healthcheck:
+      interval: 5s
+      retries: 10
+      test: curl --write-out 'HTTP %{http_code}' --fail --silent --output /dev/null http://localhost:8090/sample
+
+  collector:
+    # Wrapper around otel/opentelemetry-collector:latest. Contains external support for AWS (exporters awsemf, awsxray etc.) // OTEL_SERVICE_NAME
+    image: public.ecr.aws/aws-observability/aws-otel-collector:latest 
+    container_name: collector
+    hostname: collector
+    command: ["--config=/etc/collector-config.yaml"]
+    environment:
+      - AWS_PROFILE=default
+    volumes:
+      - ./collector-config.yaml:/etc/collector-config.yaml
+      - ~/.aws:/root/.aws
+    ports:
+      - "5555:5555"
+
+networks:
+  default:
+    name: inst-java-apps-using-otel
