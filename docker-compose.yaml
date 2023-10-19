@@ -16,6 +16,7 @@ services:
     environment:
       - OTEL_TRACES_EXPORTER=otlp
       - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_LOGS_EXPORTER=otlp
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:5555
       - OTEL_TRACES_SAMPLER=always_on
       - OTEL_IMR_EXPORT_INTERVAL=5000

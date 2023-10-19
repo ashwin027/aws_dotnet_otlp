@@ -8,6 +8,17 @@ using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using System.Diagnostics.Metrics;
 using System.Reflection.PortableExecutable;
+using Microsoft.Extensions.Configuration;
+using Serilog;
+using Amazon.CloudWatchLogs;
+using Serilog.Sinks.AwsCloudWatch;
+using Amazon.Runtime;
+using Amazon;
+using Serilog.Sinks.OpenTelemetry;
+using AWS.Logger;
+using AWS.Logger.SeriLog;
+using Serilog.Formatting.Compact;
+using Microsoft.Extensions.Options;
 
 internal class Program
 {
@@ -35,8 +46,9 @@ internal class Program
                 builder.AddAspNetCoreInstrumentation()
                     .AddXRayTraceId()
                     .AddAWSInstrumentation()
-                    .AddHttpClientInstrumentation();
-                    
+                    .AddHttpClientInstrumentation()
+                    .AddConsoleExporter();
+
 
                 // Use IConfiguration binding for AspNetCore instrumentation options.
                 appBuilder.Services.Configure<AspNetCoreInstrumentationOptions>(appBuilder.Configuration.GetSection("AspNetCoreInstrumentation"));
@@ -49,40 +61,53 @@ internal class Program
 
                 Sdk.SetDefaultTextMapPropagator(new AWSXRayPropagator());
             });
-            //.WithMetrics(builder =>
-            //{
-            //    builder
-            //        .AddMeter(Instrumentation.MeterName)
-            //        .AddRuntimeInstrumentation()
-            //        .AddHttpClientInstrumentation()
-            //        .AddAspNetCoreInstrumentation();
+        //.WithMetrics(builder =>
+        //{
+        //    builder
+        //        .AddMeter(Instrumentation.MeterName)
+        //        .AddRuntimeInstrumentation()
+        //        .AddHttpClientInstrumentation()
+        //        .AddAspNetCoreInstrumentation();
 
-            //    builder.AddView(instrument =>
-            //    {
-            //        return instrument.GetType().GetGenericTypeDefinition() == typeof(Histogram<>)
-            //            ? new Base2ExponentialBucketHistogramConfiguration()
-            //            : null;
-            //    });
+        //    builder.AddView(instrument =>
+        //    {
+        //        return instrument.GetType().GetGenericTypeDefinition() == typeof(Histogram<>)
+        //            ? new Base2ExponentialBucketHistogramConfiguration()
+        //            : null;
+        //    });
 
-            //    builder.AddOtlpExporter(otlpOptions =>
-            //    {
-            //        // Use IConfiguration directly for Otlp exporter endpoint option.
-            //        otlpOptions.Endpoint = collectorEndpoint;
-            //    });
-            //});
+        //    builder.AddOtlpExporter(otlpOptions =>
+        //    {
+        //        // Use IConfiguration directly for Otlp exporter endpoint option.
+        //        otlpOptions.Endpoint = collectorEndpoint;
+        //    });
+        //});
 
         // Configure OpenTelemetry Logging.
-        appBuilder.Logging.AddOpenTelemetry(options =>
-        {
-            // Note: See appsettings.json Logging:OpenTelemetry section for configuration.
 
-            var resourceBuilder = ResourceBuilder.CreateDefault();
-            configureResource(resourceBuilder);
-            options.SetResourceBuilder(resourceBuilder);
-            options.AddOtlpExporter(otlpOptions =>
+        var client = new AmazonCloudWatchLogsClient(RegionEndpoint.USEast2);
+        var logger = new LoggerConfiguration()
+            .WriteTo.AmazonCloudWatch(
+                // The name of the log group to log to
+                logGroup: "/metrics/otel",
+                logStreamPrefix: DateTime.UtcNow.ToString("yyyyMMddHHmmssfff"),
+        // The AWS CloudWatch client to use
+        cloudWatchClient: client)
+            .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3} ({TraceId}:{SpanId})] {Message:lj}{NewLine}{Exception}")
+            .Enrich.FromLogContext()
+            .CreateLogger();
+
+        appBuilder.Services.AddLogging(loggingBuilder =>
+        {
+            loggingBuilder.AddConfiguration(appBuilder.Configuration.GetSection("Logging"));
+            loggingBuilder.AddSerilog(logger);
+            loggingBuilder.Configure(options =>
             {
-                // Use IConfiguration directly for Otlp exporter endpoint option.
-                otlpOptions.Endpoint = collectorEndpoint;
+                options.ActivityTrackingOptions = ActivityTrackingOptions.SpanId
+                                                   | ActivityTrackingOptions.TraceId
+                                                   | ActivityTrackingOptions.ParentId
+                                                   | ActivityTrackingOptions.Baggage
+                                                   | ActivityTrackingOptions.Tags;
             });
         });
 

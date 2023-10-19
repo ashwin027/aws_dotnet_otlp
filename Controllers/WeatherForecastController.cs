@@ -21,6 +21,7 @@ namespace aws_dotnet_otlp.Controllers
 
         public WeatherForecastController(ILogger<WeatherForecastController> logger, Instrumentation instrumentation)
         {
+            logger.LogInformation("Instantiating.");
             this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
             ArgumentNullException.ThrowIfNull(instrumentation);
@@ -31,7 +32,10 @@ namespace aws_dotnet_otlp.Controllers
         [HttpGet]
         public IEnumerable<WeatherForecast> Get()
         {
-            using var scope = this.logger.BeginScope("{Id}", Guid.NewGuid().ToString("N"));
+           
+            // using var scope = this.logger.BeginScope("{Id}", Guid.NewGuid().ToString("N"));
+
+            
 
             // Making an http call here to serve as an example of
             // how dependency calls will be captured and treated
@@ -47,7 +51,8 @@ namespace aws_dotnet_otlp.Controllers
             // Note: Tags can be added to the current activity without the need for
             // a manual activity using Acitivty.Current?.SetTag()
             using var activity = this.activitySource.StartActivity("calculate forecast");
-
+            logger.LogInformation($"TraceId: {Activity.Current.Id}");
+            logger.LogInformation("Processing your request");
             var rng = new Random();
             DateTime? nullableDate = new DateTime();
             DateTime regularDate = nullableDate.HasValue ? nullableDate.Value : default(DateTime);
